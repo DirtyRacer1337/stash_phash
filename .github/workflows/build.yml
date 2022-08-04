@@ -13,10 +13,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        os:
-          - linux
-          - darwin
-          - windows
+        os: [linux, darwin, windows]
     env:
       package: stash_phash
 
@@ -78,7 +75,7 @@ jobs:
         uses: actions/download-artifact@v2
 
       - name: Release
-      - uses: marvinpinto/action-automatic-releases@latest
+        uses: marvinpinto/action-automatic-releases@latest
         with:
           repo_token: "${{ secrets.GITHUB_TOKEN }}"
           automatic_release_tag: "nightly"
