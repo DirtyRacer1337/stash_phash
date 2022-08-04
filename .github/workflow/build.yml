@@ -1,0 +1,84 @@
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+jobs:
+  - build:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        os:
+          - linux
+          - darwin
+          - windows
+    env:
+      package: stash_phash
+
+    name: Build for ${{ matrix.os }}
+    steps:
+      - name: Checkout the repository
+        uses: actions/checkout@v3
+
+      - name: Setup Go
+        uses: actions/setup-go@v3
+        with:
+          go-version: '^1.18'
+
+      - name: Cache
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-
+
+      - name: Build
+        run: go build -o $package-$GOOS
+        env:
+          GOOS: ${{ matrix.os }}
+          GOARCH: amd64
+
+      - name: Set base Filename
+        run: echo '::set-output filename=$package-${{ matrix.os }}
+
+      - name: Add exe for Windows
+        if: matrix.os == 'windows'
+        run: echo '::set-output filename=$filename.exe
+
+      - name: Rename File
+        run: mv $package-$filename $filename
+
+      - uses: vimtor/action-zip@v1
+        with:
+          files: $filename
+          dest: ${{ package }}-${{ matrix.os }}.zip
+
+      - uses: actions/upload-artifact@v2
+        with:
+          if-no-files-found: error
+          name: ${{ package }}-${{ matrix.os }}
+          retention-days: 90
+          path: ${{ package }}-${{ matrix.os }}.zip
+
+  - release:
+    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main'}}
+    needs:
+      - build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v2
+
+      - name: Release
+      - uses: marvinpinto/action-automatic-releases@latest
+        with:
+          repo_token: "${{ secrets.GITHUB_TOKEN }}"
+          automatic_release_tag: "nightly"
+          prerelease: true
+          title: "Development Build"
+          files: |
+            **/*.zip
