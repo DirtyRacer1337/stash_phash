@@ -1,0 +1,79 @@
+name: Build and Release
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        os: [linux, darwin, windows]
+    env:
+      package: stash_phash
+
+    name: Build for ${{ matrix.os }}
+    steps:
+      - name: Checkout the repository
+        uses: actions/checkout@v3
+
+      - name: Setup Go
+        uses: actions/setup-go@v3
+        with:
+          go-version: ~1.18
+          cache: true
+
+      - name: Build
+        run: go build -o $package
+        env:
+          GOOS: ${{ matrix.os }}
+          GOARCH: amd64
+
+      - name: Set Base Filename
+        run: 'echo "filename=${{ env.package }}" >> $GITHUB_ENV'
+
+      - name: Add exe for Windows
+        if: ${{ matrix.os == 'windows' }}
+        run: 'echo "filename=${{ env.filename }}.exe" >> $GITHUB_ENV'
+
+      - name: Rename File
+        if: ${{ env.package != env.filename }}
+        run: 'mv ${{ env.package }} ${{ env.filename }}'
+
+      - name: Zip File
+        uses: vimtor/action-zip@v1
+        with:
+          files: ${{ env.filename }}
+          dest: ${{ env.package }}-${{ matrix.os }}.zip
+
+      - name: Upload
+        uses: actions/upload-artifact@v3
+        with:
+          if-no-files-found: error
+          retention-days: 90
+          name: ${{ env.package }}-${{ matrix.os }}
+          path: ${{ env.package }}-${{ matrix.os }}.zip
+
+  release:
+    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main'}}
+    needs:
+      - build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v3
+
+      - name: Release
+        uses: marvinpinto/action-automatic-releases@latest
+        with:
+          repo_token: "${{ secrets.GITHUB_TOKEN }}"
+          automatic_release_tag: "nightly"
+          prerelease: true
+          title: "Development Build"
+          files: |
+            **/*.zip
